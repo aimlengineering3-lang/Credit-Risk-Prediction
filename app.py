@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import joblib
 import matplotlib.pyplot as plt
+from pathlib import Path
 
 # ==========================================================
 # PAGE CONFIG
@@ -17,9 +18,21 @@ st.set_page_config(
 # LOAD FILES
 # ==========================================================
 
-pipeline = joblib.load("models/credit_risk_pipeline.pkl")
-metrics = joblib.load("models/metrics.pkl")
-feature_importance = joblib.load("models/feature_importance.pkl")
+MODEL_DIR = Path(__file__).parent / "models"
+
+
+@st.cache_resource
+def load_artifacts():
+    """Load model files once instead of on every Streamlit rerun."""
+    return (
+        joblib.load(MODEL_DIR / "credit_risk_pipeline.pkl"),
+        joblib.load(MODEL_DIR / "metrics.pkl"),
+        joblib.load(MODEL_DIR / "feature_importance.pkl"),
+        joblib.load(MODEL_DIR / "model_columns.pkl"),
+    )
+
+
+pipeline, metrics, feature_importance, model_columns = load_artifacts()
 
 # ==========================================================
 # CUSTOM CSS
@@ -235,6 +248,26 @@ h1, h2, h3, h4 {
 .element-container {
     margin-bottom: 8px;
 }
+
+/* =====================================================
+   METRIC VISIBILITY FIX (Portfolio Analytics)
+===================================================== */
+
+[data-testid="stMetric"] {
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 16px;
+    padding: 16px 20px;
+}
+
+[data-testid="stMetricLabel"], [data-testid="stMetricLabel"] * {
+    color: #cbd5e1 !important;
+}
+
+[data-testid="stMetricValue"], [data-testid="stMetricValue"] * {
+    color: #60a5fa !important;
+    font-weight: 700 !important;
+}
             
 
 
@@ -347,7 +380,7 @@ if page == "Credit Assessment":
     with col1:
         age = st.slider(
             "Applicant Age",
-            18,
+            19,
             75,
             35
         )
@@ -356,7 +389,7 @@ if page == "Credit Assessment":
         residence_since = st.slider(
             "Years At Current Residence",
             1,
-            10,
+            4,
             3
         )
 
@@ -400,7 +433,7 @@ if page == "Credit Assessment":
         n_credits = st.slider(
             "Existing Financing Accounts",
             1,
-            5,
+            4,
             1
         )
 
@@ -475,46 +508,44 @@ if page == "Credit Assessment":
         )
 
     with col2:
+        # Values must match the categories the model was trained on
         purpose = st.selectbox(
             "Loan Purpose",
             [
-                "car",
-                "radio/TV",
+                "car (new)",
+                "car (used)",
+                "radio/television",
                 "furniture/equipment",
+                "domestic appliances",
                 "business",
                 "education",
                 "repairs",
-                "vacation/others"
+                "retraining",
+                "others"
             ]
         )
 
-        installment_rate = st.slider(
-            "Installment Rate (% of income)",
-            1,
-            4,
-            2
-        )
-
     with col3:
-        foreign_worker = st.selectbox(
-            "Foreign Worker",
-            ["yes", "no"]
-        )
-
-        existing_loans = st.slider(
-            "Number of Existing Loans",
-            0,
-            4,
-            1
+        credit_history = st.selectbox(
+            "Credit History",
+            [
+                "existing credits paid back duly till now",
+                "all credits at this bank paid back duly",
+                "no credits taken/ all credits paid back duly",
+                "delay in paying off in the past",
+                "critical account/ other credits existing (not at this bank)"
+            ]
         )
 
 # ==========================================================
 # PREDICTION BUTTON
 # ==========================================================
 
-st.markdown("<br>", unsafe_allow_html=True)
+predict_btn = False
 
-predict_btn = st.button("🚀 Run Credit Risk Assessment")
+if page == "Credit Assessment":
+    st.markdown("<br>", unsafe_allow_html=True)
+    predict_btn = st.button("🚀 Run Credit Risk Assessment")
 
 # ==========================================================
 # PREDICTION LOGIC
@@ -530,22 +561,20 @@ def map_inputs():
         "residence_since": residence_since,
         "housing": housing,
 
-        "credit_history": "good",   # or make dropdown later
+        "credit_history": credit_history,
 
         "credit_amount": credit_amount,
         "month_duration": duration,
 
         "purpose": purpose,
-        "installment_rate": installment_rate,
 
         "payment_to_income_ratio": payment_to_income_ratio,
         "n_credits": n_credits,
 
         "other_installment_plans": other_installment_plans,
         "telephone": telephone,
-        "foreign_worker": foreign_worker,
 
-        "n_guarantors": 0,
+        "n_guarantors": 1,
         "secondary_obligor": "none"
     }
 
@@ -556,7 +585,6 @@ if predict_btn:
     input_data = pd.DataFrame([map_inputs()])
 
     # STEP 2: align columns
-    model_columns = joblib.load("models/model_columns.pkl")
     input_data = input_data.reindex(columns=model_columns)
 
     # STEP 3: fill missing values
@@ -567,7 +595,7 @@ if predict_btn:
 
     try:
         probability = pipeline.predict_proba(input_data)[0][1]
-    except:
+    except Exception:
         probability = None
 
 
@@ -689,11 +717,35 @@ if page == "Portfolio Analytics":
 
     features = features.sort_values(ascending=True)
 
-    fig, ax = plt.subplots()
-    ax.barh(features.index, features.values)
-    ax.set_title("Feature Importance")
+    # Show only the 15 strongest drivers with readable labels
+    top_features = features.tail(15)
+    labels = [
+        name.replace("_", ": ", 1).replace("_", " ")[:48]
+        for name in top_features.index
+    ]
 
+    fig, ax = plt.subplots(figsize=(11, 6.5))
+    fig.patch.set_facecolor("#0f172a")
+    ax.set_facecolor("#0f172a")
+
+    bars = ax.barh(labels, top_features.values, color="#38bdf8")
+    ax.bar_label(bars, fmt="%.3f", padding=4, color="#e2e8f0", fontsize=9)
+
+    ax.set_title("Top 15 Feature Importances", color="white", fontsize=15, pad=14)
+    ax.set_xlabel("Importance (Random Forest, Gini)", color="#cbd5e1")
+    ax.tick_params(colors="#e2e8f0", labelsize=10)
+    ax.set_xlim(0, top_features.max() * 1.15)
+
+    for side in ("top", "right"):
+        ax.spines[side].set_visible(False)
+    for side in ("left", "bottom"):
+        ax.spines[side].set_color("#475569")
+    ax.grid(axis="x", color="#334155", alpha=0.5)
+    ax.set_axisbelow(True)
+
+    fig.tight_layout()
     st.pyplot(fig)
+    plt.close(fig)
 
     st.markdown("""
     <div class='section-card'>
