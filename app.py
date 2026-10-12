@@ -130,10 +130,49 @@ section[data-testid="stSidebar"] *{
     border:1px solid #475569;
 }
 
+.result-label{
+    color:#cbd5e1;
+    font-size:20px;
+    font-weight:600;
+    letter-spacing:1px;
+    text-transform:uppercase;
+}
+
 .score{
     font-size:90px;
     font-weight:900;
-    color:#38bdf8;
+    line-height:1.1;
+    margin:10px 0;
+}
+
+.score-max{
+    font-size:26px;
+    font-weight:500;
+    color:#94a3b8;
+}
+
+.risk-bar{
+    width:70%;
+    height:12px;
+    margin:10px auto 22px auto;
+    background:#334155;
+    border-radius:999px;
+    overflow:hidden;
+}
+
+.risk-bar-fill{
+    height:100%;
+    border-radius:999px;
+}
+
+.risk-badge{
+    display:inline-block;
+    font-size:28px;
+    font-weight:800;
+    padding:8px 28px;
+    border-radius:999px;
+    background:rgba(255,255,255,0.06);
+    border:1px solid currentColor;
 }
 
 .low{
@@ -624,23 +663,20 @@ if predict_btn:
 
     st.markdown("## 📊 Assessment Result")
 
-    st.markdown(f"""
-    <div class='result-card'>
+    bar_color = {"low": "#22c55e", "medium": "#f59e0b", "high": "#ef4444"}[css_class]
 
-        <h2>Credit Risk Score</h2>
-
-        <div class='score'>
-            {risk_score}
-        </div>
-
-        <h3>Out of 100</h3>
-
-        <h1 class='{css_class}'>
-            {category}
-        </h1>
-
-    </div>
-    """, unsafe_allow_html=True)
+    # NOTE: no blank lines inside this HTML, otherwise Markdown breaks it into a code block
+    result_html = (
+        "<div class='result-card'>"
+        "<div class='result-label'>Credit Risk Score</div>"
+        f"<div class='score {css_class}'>{risk_score}<span class='score-max'> / 100</span></div>"
+        "<div class='risk-bar'>"
+        f"<div class='risk-bar-fill' style='width:{risk_score}%;background:{bar_color};'></div>"
+        "</div>"
+        f"<div class='risk-badge {css_class}'>{category}</div>"
+        "</div>"
+    )
+    st.markdown(result_html, unsafe_allow_html=True)
 
     # ======================================================
     # INSIGHTS PANEL
